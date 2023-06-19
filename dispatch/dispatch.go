@@ -241,9 +241,10 @@ func (d *Dispatcher) subscribe(id uuid.UUID) (<-chan interface{}, error) {
 	}
 
 	// Get an unused channel from the channel pool
-	ch, ok := d.outbound.Get().(chan interface{})
+	chGet := d.outbound.Get()
+	ch, ok := chGet.(chan interface{})
 	if !ok {
-		return nil, errTypeAssertionFailure
+		return nil, fmt.Errorf("%v - %T is not a %T", errTypeAssertionFailure, chGet, ch)
 	}
 
 	d.routes[id] = append(d.routes[id], ch)
