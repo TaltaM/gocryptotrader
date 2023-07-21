@@ -22,34 +22,17 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
-const (
-	wsUSDTKline = "candle"
-
-	bybitWebsocketUSDTMarginedFuturesPublicV2  = "wss://stream.bybit.com/realtime_public"
-	bybitWebsocketUSDTMarginedFuturesPrivateV2 = "wss://stream.bybit.com/realtime_private"
-)
-
-var (
-	defaultUSDTMarginedFuturesSubscriptionChannels = []string{
-		wsInstrument,
-		wsOrder200,
-		wsTrade,
-		wsUSDTKline,
-		wsLiquidation,
-	}
-)
-
-// WsUSDTConnect connects to a USDT websocket feed
-func (by *Bybit) WsUSDTConnect() error {
-	if !by.Websocket.IsEnabled() || !by.IsEnabled() || !by.IsAssetWebsocketSupported(asset.USDTMarginedFutures) {
+// WsContractXConnect connects to a websocket feed
+func (by *Bybit) WsContractXConnect(a asset.Item) error {
+	if !by.Websocket.IsEnabled() || !by.IsEnabled() || !by.IsAssetWebsocketSupported(a) {
 		return errors.New(stream.WebsocketNotEnabled)
 	}
-	ufuturesWebsocket, err := by.Websocket.GetAssetWebsocket(asset.USDTMarginedFutures)
+	assetWebsocket, err := by.Websocket.GetAssetWebsocket(a)
 	if err != nil {
-		return fmt.Errorf("%w asset type: %v", err, asset.USDTMarginedFutures)
+		return fmt.Errorf("%w asset type: %v", err, a)
 	}
 	var dialer websocket.Dialer
-	err = ufuturesWebsocket.Conn.Dial(&dialer, http.Header{})
+	err = assetWebsocket.Conn.Dial(&dialer, http.Header{})
 	if err != nil {
 		return err
 	}
@@ -58,47 +41,48 @@ func (by *Bybit) WsUSDTConnect() error {
 	if err != nil {
 		return err
 	}
-	ufuturesWebsocket.Conn.SetupPingHandler(stream.PingHandler{
+	assetWebsocket.Conn.SetupPingHandler(stream.PingHandler{
 		Message:     pingMsg,
 		MessageType: websocket.PingMessage,
 		Delay:       bybitWebsocketTimer,
 	})
 	if by.Verbose {
-		log.Debugf(log.ExchangeSys, "%s Connected to Websocket.\n", by.Name)
+		log.Debugf(log.ExchangeSys, "%s Connected to %v Websocket.\n", by.Name, a)
 	}
 
-	go by.wsUSDTFuturesReadData(ufuturesWebsocket.Conn)
-	by.Websocket.SetCanUseAuthenticatedEndpoints(true, asset.USDTMarginedFutures)
+	go by.wsContractReadData(assetWebsocket.Conn, a)
+	by.Websocket.SetCanUseAuthenticatedEndpoints(true, a)
 	if by.Websocket.CanUseAuthenticatedEndpoints() {
-		err = by.WsUSDTAuth(context.TODO(), &dialer)
+		err = by.WsContractXAuth(context.TODO(), &dialer, a)
 		if err != nil {
 			by.Websocket.DataHandler <- err
-			by.Websocket.SetCanUseAuthenticatedEndpoints(false, asset.USDTMarginedFutures)
+			by.Websocket.SetCanUseAuthenticatedEndpoints(false, a)
 		}
 	}
 	return nil
 }
 
-// wsUSDTFuturesReadData read coming messages thought the websocket connection and process the data.
-func (by *Bybit) wsUSDTFuturesReadData(ws stream.Connection) {
-	usdtMarginedFuturesWebsocket, err := by.Websocket.GetAssetWebsocket(asset.USDTMarginedFutures)
+// wsContractXReadData read coming messages thought the websocket connection and process the data.
+func (by *Bybit) wsContractXReadData(wsConn stream.Connection, a asset.Item) {
+	defer by.Websocket.Wg.Done()
+	assetWebsocket, err := by.Websocket.GetAssetWebsocket(a)
 	if err != nil {
-		log.Errorf(log.ExchangeSys, "%v asset type: %v", err, asset.USDTMarginedFutures)
+		log.Errorf(log.ExchangeSys, "%v asset type: %v", err, a)
 		return
 	}
-	usdtMarginedFuturesWebsocket.Wg.Add(1)
-	defer usdtMarginedFuturesWebsocket.Wg.Done()
+	assetWebsocket.Wg.Add(1)
+	defer assetWebsocket.Wg.Done()
 	for {
 		select {
-		case <-usdtMarginedFuturesWebsocket.ShutdownC:
+		case <-assetWebsocket.ShutdownC:
 			return
 		default:
-			resp := ws.ReadMessage()
+			resp := wsConn.ReadMessage()
 			if resp.Raw == nil {
 				return
 			}
 
-			err := by.wsUSDTHandleData(resp.Raw)
+			err := by.wsContractXHandleData(resp.Raw, a)
 			if err != nil {
 				by.Websocket.DataHandler <- err
 			}
@@ -106,22 +90,22 @@ func (by *Bybit) wsUSDTFuturesReadData(ws stream.Connection) {
 	}
 }
 
-// WsUSDTAuth sends an authentication message to receive auth data
-func (by *Bybit) WsUSDTAuth(ctx context.Context, dialer *websocket.Dialer) error {
-	ufuturesWebsocket, err := by.Websocket.GetAssetWebsocket(asset.USDTMarginedFutures)
+// WsContractXAuth sends an authentication message to receive auth data
+func (by *Bybit) WsContractXAuth(ctx context.Context, dialer *websocket.Dialer, a asset.Item) error {
+	assetWebsocket, err := by.Websocket.GetAssetWebsocket(a)
 	if err != nil {
-		return fmt.Errorf("%w asset type: %v", err, asset.USDTMarginedFutures)
+		return fmt.Errorf("%w asset type: %v", err, a)
 	}
 	creds, err := by.GetCredentials(ctx)
 	if err != nil {
 		return err
 	}
 
-	err = ufuturesWebsocket.AuthConn.Dial(dialer, http.Header{})
+	err = assetWebsocket.AuthConn.Dial(dialer, http.Header{})
 	if err != nil {
 		return err
 	}
-	go by.wsUSDTFuturesReadData(ufuturesWebsocket.AuthConn)
+	go by.wsContractReadData(assetWebsocket.AuthConn, a)
 	intNonce := (time.Now().Unix() + 1) * 1000
 	strNonce := strconv.FormatInt(intNonce, 10)
 	hmac, err := crypto.GetHMAC(
@@ -137,12 +121,12 @@ func (by *Bybit) WsUSDTAuth(ctx context.Context, dialer *websocket.Dialer) error
 		Operation: "auth",
 		Args:      []interface{}{creds.Key, intNonce, sign},
 	}
-	return ufuturesWebsocket.AuthConn.SendJSONMessage(req)
+	return assetWebsocket.AuthConn.SendJSONMessage(req)
 }
 
-// GenerateUSDTMarginedFuturesDefaultSubscriptions returns channel subscriptions for futures instruments
-func (by *Bybit) GenerateUSDTMarginedFuturesDefaultSubscriptions() ([]stream.ChannelSubscription, error) {
-	channels := defaultUSDTMarginedFuturesSubscriptionChannels
+// GenerateWsContractXDefaultSubscriptions returns channel subscriptions for futures instruments
+func (by *Bybit) GenerateWsContractXDefaultSubscriptions(a asset.Item) ([]stream.ChannelSubscription, error) {
+	channels := defaultSubscriptionChannels[a]
 	if by.Websocket.CanUseAuthenticatedEndpoints() {
 		channels = append(channels,
 			wsWallet,
@@ -150,48 +134,48 @@ func (by *Bybit) GenerateUSDTMarginedFuturesDefaultSubscriptions() ([]stream.Cha
 			wsStopOrder)
 	}
 	subscriptions := []stream.ChannelSubscription{}
-	usdtMarginedFuturesPairs, err := by.GetEnabledPairs(asset.USDTMarginedFutures)
+	contractPairs, err := by.GetEnabledPairs(a)
 	if err != nil {
 		return nil, err
 	}
-	usdtMarginedFuturesPairFormat, err := by.GetPairFormat(asset.USDTMarginedFutures, true)
+	contractPairFormat, err := by.GetPairFormat(a, true)
 	if err != nil {
 		return nil, err
 	}
-	usdtMarginedFuturesPairs = usdtMarginedFuturesPairs.Format(usdtMarginedFuturesPairFormat)
+	contractPairs = contractPairs.Format(contractPairFormat)
 	for x := range channels {
 		switch channels[x] {
 		case wsInsurance, wsLiquidation, wsPosition,
 			wsExecution, wsOrder, wsStopOrder, wsWallet:
 			subscriptions = append(subscriptions, stream.ChannelSubscription{
-				Asset:   asset.USDTMarginedFutures,
+				Asset:   a,
 				Channel: channels[x],
 			})
 		case wsOrder25, wsTrade:
-			for p := range usdtMarginedFuturesPairs {
+			for p := range contractPairs {
 				subscriptions = append(subscriptions, stream.ChannelSubscription{
-					Asset:    asset.USDTMarginedFutures,
+					Asset:    a,
 					Channel:  channels[x],
-					Currency: usdtMarginedFuturesPairs[p],
+					Currency: contractPairs[p],
 				})
 			}
-		case wsUSDTKline:
-			for p := range usdtMarginedFuturesPairs {
+		case wsKlineV2, wsUSDTKline:
+			for p := range contractPairs {
 				subscriptions = append(subscriptions, stream.ChannelSubscription{
-					Asset:    asset.USDTMarginedFutures,
+					Asset:    a,
 					Channel:  channels[x],
-					Currency: usdtMarginedFuturesPairs[p],
+					Currency: contractPairs[p],
 					Params: map[string]interface{}{
 						"interval": "1",
 					},
 				})
 			}
 		case wsInstrument, wsOrder200:
-			for p := range usdtMarginedFuturesPairs {
+			for p := range contractPairs {
 				subscriptions = append(subscriptions, stream.ChannelSubscription{
-					Asset:    asset.USDTMarginedFutures,
+					Asset:    a,
 					Channel:  channels[x],
-					Currency: usdtMarginedFuturesPairs[p],
+					Currency: contractPairs[p],
 					Params: map[string]interface{}{
 						"frequency_interval": "100ms",
 					},
@@ -202,11 +186,11 @@ func (by *Bybit) GenerateUSDTMarginedFuturesDefaultSubscriptions() ([]stream.Cha
 	return subscriptions, nil
 }
 
-// SubscribeUSDT sends a websocket message to receive data from the channel
-func (by *Bybit) SubscribeUSDT(channelsToSubscribe []stream.ChannelSubscription) error {
-	usdtMarginedFuturesWebsocket, err := by.Websocket.GetAssetWebsocket(asset.USDTMarginedFutures)
+// SubscribeWsContractX sends a websocket message to receive data from the channel
+func (by *Bybit) SubscribeWsContractX(channelsToSubscribe []stream.ChannelSubscription, a asset.Item) error {
+	assetWebsocket, err := by.Websocket.GetAssetWebsocket(a)
 	if err != nil {
-		return fmt.Errorf("%w asset type: %v", err, asset.USDTMarginedFutures)
+		return fmt.Errorf("%w asset type: %v", err, a)
 	}
 	var errs error
 	for i := range channelsToSubscribe {
@@ -215,7 +199,7 @@ func (by *Bybit) SubscribeUSDT(channelsToSubscribe []stream.ChannelSubscription)
 
 		argStr := formatArgs(channelsToSubscribe[i].Channel, channelsToSubscribe[i].Params)
 		switch channelsToSubscribe[i].Channel {
-		case wsOrder25, wsUSDTKline, wsInstrument, wsOrder200, wsTrade:
+		case wsOrder25, wsKlineV2, wsUSDTKline, wsInstrument, wsOrder200, wsTrade:
 			var formattedPair currency.Pair
 			formattedPair, err = by.FormatExchangeCurrency(channelsToSubscribe[i].Currency, channelsToSubscribe[i].Asset)
 			if err != nil {
@@ -226,44 +210,44 @@ func (by *Bybit) SubscribeUSDT(channelsToSubscribe []stream.ChannelSubscription)
 		}
 		sub.Args = append(sub.Args, argStr)
 
-		err = usdtMarginedFuturesWebsocket.Conn.SendJSONMessage(sub)
+		err = assetWebsocket.Conn.SendJSONMessage(sub)
 		if err != nil {
 			errs = common.AppendError(errs, err)
 			continue
 		}
-		usdtMarginedFuturesWebsocket.AddSuccessfulSubscriptions(channelsToSubscribe[i])
+		assetWebsocket.AddSuccessfulSubscriptions(channelsToSubscribe[i])
 	}
 	return errs
 }
 
-// UnsubscribeUSDT sends a websocket message to stop receiving data from the channel
-func (by *Bybit) UnsubscribeUSDT(channelsToUnsubscribe []stream.ChannelSubscription) error {
-	usdtMarginedFuturesWebsocket, err := by.Websocket.GetAssetWebsocket(asset.USDTMarginedFutures)
+// UnsubscribeWsContractX sends a websocket message to stop receiving data from the channel
+func (by *Bybit) UnsubscribeWsContractX(channelsToUnsubscribe []stream.ChannelSubscription, a asset.Item) error {
+	assetWebsocket, err := by.Websocket.GetAssetWebsocket(a)
 	if err != nil {
-		return fmt.Errorf("%w asset type: %v", err, asset.USDTMarginedFutures)
+		return fmt.Errorf("%w asset type: %v", err, a)
 	}
 	var errs error
 	for i := range channelsToUnsubscribe {
 		var unSub WsFuturesReq
 		unSub.Topic = wsUnsubscribe
 
-		formattedPair, err := by.FormatExchangeCurrency(channelsToUnsubscribe[i].Currency, asset.USDTMarginedFutures)
+		formattedPair, err := by.FormatExchangeCurrency(channelsToUnsubscribe[i].Currency, a)
 		if err != nil {
 			errs = common.AppendError(errs, err)
 			continue
 		}
 		unSub.Args = append(unSub.Args, channelsToUnsubscribe[i].Channel+dot+formattedPair.String())
-		err = usdtMarginedFuturesWebsocket.Conn.SendJSONMessage(unSub)
+		err = assetWebsocket.Conn.SendJSONMessage(unSub)
 		if err != nil {
 			errs = common.AppendError(errs, err)
 			continue
 		}
-		usdtMarginedFuturesWebsocket.RemoveSuccessfulUnsubscriptions(channelsToUnsubscribe[i])
+		assetWebsocket.RemoveSuccessfulUnsubscriptions(channelsToUnsubscribe[i])
 	}
 	return errs
 }
 
-func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
+func (by *Bybit) wsContractXHandleData(respRaw []byte, a asset.Item) error {
 	var multiStreamData map[string]interface{}
 	err := json.Unmarshal(respRaw, &multiStreamData)
 	if err != nil {
@@ -273,7 +257,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 	t, ok := multiStreamData["topic"].(string)
 	if !ok {
 		if by.Verbose {
-			log.Warnf(log.ExchangeSys, "%s Asset Type %v Received unhandled message on websocket: %v\n", by.Name, asset.USDTMarginedFutures, multiStreamData)
+			log.Warnf(log.ExchangeSys, "%s Asset Type %v Received unhandled message on websocket: %v\n", by.Name, a, multiStreamData)
 		}
 		return nil
 	}
@@ -288,21 +272,22 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 		if wsType, ok := multiStreamData["type"].(string); ok {
 			switch wsType {
 			case wsOperationSnapshot:
-				var response WsUSDTOrderbook
+				var response WsFuturesOrderbook
 				err = json.Unmarshal(respRaw, &response)
 				if err != nil {
 					return err
 				}
 
 				var p currency.Pair
-				p, err = by.extractCurrencyPair(response.Data[0].Symbol, asset.USDTMarginedFutures)
+				p, err = by.extractCurrencyPair(response.Data[0].Symbol, a)
 				if err != nil {
 					return err
 				}
+
 				err = by.processOrderbook(response.Data,
 					wsOperationSnapshot,
 					p,
-					asset.USDTMarginedFutures)
+					a)
 				if err != nil {
 					return err
 				}
@@ -316,7 +301,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 
 				if len(response.OBData.Delete) > 0 {
 					var p currency.Pair
-					p, err = by.extractCurrencyPair(response.OBData.Delete[0].Symbol, asset.USDTMarginedFutures)
+					p, err = by.extractCurrencyPair(response.OBData.Delete[0].Symbol, a)
 					if err != nil {
 						return err
 					}
@@ -324,7 +309,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 					err = by.processOrderbook(response.OBData.Delete,
 						wsOrderbookActionDelete,
 						p,
-						asset.USDTMarginedFutures)
+						a)
 					if err != nil {
 						return err
 					}
@@ -332,7 +317,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 
 				if len(response.OBData.Update) > 0 {
 					var p currency.Pair
-					p, err = by.extractCurrencyPair(response.OBData.Update[0].Symbol, asset.USDTMarginedFutures)
+					p, err = by.extractCurrencyPair(response.OBData.Update[0].Symbol, a)
 					if err != nil {
 						return err
 					}
@@ -340,7 +325,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 					err = by.processOrderbook(response.OBData.Update,
 						wsOrderbookActionUpdate,
 						p,
-						asset.USDTMarginedFutures)
+						a)
 					if err != nil {
 						return err
 					}
@@ -348,7 +333,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 
 				if len(response.OBData.Insert) > 0 {
 					var p currency.Pair
-					p, err = by.extractCurrencyPair(response.OBData.Insert[0].Symbol, asset.USDTMarginedFutures)
+					p, err = by.extractCurrencyPair(response.OBData.Insert[0].Symbol, a)
 					if err != nil {
 						return err
 					}
@@ -356,7 +341,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 					err = by.processOrderbook(response.OBData.Insert,
 						wsOrderbookActionInsert,
 						p,
-						asset.USDTMarginedFutures)
+						a)
 					if err != nil {
 						return err
 					}
@@ -379,7 +364,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 		trades := make([]trade.Data, len(response.TradeData))
 		for i := range response.TradeData {
 			var p currency.Pair
-			p, err = by.extractCurrencyPair(response.TradeData[0].Symbol, asset.USDTMarginedFutures)
+			p, err = by.extractCurrencyPair(response.TradeData[0].Symbol, a)
 			if err != nil {
 				return err
 			}
@@ -398,9 +383,9 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 				TID:          response.TradeData[i].ID,
 				Exchange:     by.Name,
 				CurrencyPair: p,
-				AssetType:    asset.USDTMarginedFutures,
+				AssetType:    a,
 				Side:         oSide,
-				Price:        response.TradeData[i].Price,
+				Price:        response.TradeData[i].Price.Float64(),
 				Amount:       response.TradeData[i].Size,
 				Timestamp:    response.TradeData[i].Time,
 			}
@@ -408,7 +393,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 		}
 		return by.AddTradesToBuffer(trades...)
 
-	case wsUSDTKline:
+	case wsKlineV2, wsUSDTKline:
 		var response WsFuturesKline
 		err = json.Unmarshal(respRaw, &response)
 		if err != nil {
@@ -416,7 +401,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 		}
 
 		var p currency.Pair
-		p, err = by.extractCurrencyPair(topics[len(topics)-1], asset.USDTMarginedFutures)
+		p, err = by.extractCurrencyPair(topics[len(topics)-1], a)
 		if err != nil {
 			return err
 		}
@@ -424,7 +409,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 		for i := range response.KlineData {
 			by.Websocket.DataHandler <- stream.KlineData{
 				Pair:       p,
-				AssetType:  asset.USDTMarginedFutures,
+				AssetType:  a,
 				Exchange:   by.Name,
 				OpenPrice:  response.KlineData[i].Open.Float64(),
 				HighPrice:  response.KlineData[i].High.Float64(),
@@ -446,7 +431,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 				}
 
 				var p currency.Pair
-				p, err = by.extractCurrencyPair(response.Ticker.Symbol, asset.USDTMarginedFutures)
+				p, err = by.extractCurrencyPair(response.Ticker.Symbol, a)
 				if err != nil {
 					return err
 				}
@@ -461,7 +446,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 					Volume:       response.Ticker.Volume24h.Float64(),
 					Close:        response.Ticker.PrevPrice24h.Float64(),
 					LastUpdated:  response.Ticker.UpdateAt,
-					AssetType:    asset.USDTMarginedFutures,
+					AssetType:    a,
 					Pair:         p,
 				}
 
@@ -475,12 +460,12 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 				if len(response.Data.Delete) > 0 {
 					for x := range response.Data.Delete {
 						var p currency.Pair
-						p, err = by.extractCurrencyPair(response.Data.Delete[x].Symbol, asset.USDTMarginedFutures)
+						p, err = by.extractCurrencyPair(response.Data.Delete[x].Symbol, a)
 						if err != nil {
 							return err
 						}
 						var tickerData *ticker.Price
-						tickerData, err = by.FetchTicker(context.Background(), p, asset.USDTMarginedFutures)
+						tickerData, err = by.FetchTicker(context.Background(), p, a)
 						if err != nil {
 							return err
 						}
@@ -494,7 +479,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 							Volume:       compareAndSet(tickerData.Volume, response.Data.Delete[x].Volume24h.Float64()),
 							Close:        compareAndSet(tickerData.Close, response.Data.Delete[x].PrevPrice24h.Float64()),
 							LastUpdated:  response.Data.Delete[x].UpdateAt,
-							AssetType:    asset.USDTMarginedFutures,
+							AssetType:    a,
 							Pair:         p,
 						}
 					}
@@ -506,12 +491,12 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 							continue
 						}
 						var p currency.Pair
-						p, err = by.extractCurrencyPair(response.Data.Update[x].Symbol, asset.USDTMarginedFutures)
+						p, err = by.extractCurrencyPair(response.Data.Update[x].Symbol, a)
 						if err != nil {
 							return err
 						}
 						var tickerData *ticker.Price
-						tickerData, err = by.FetchTicker(context.Background(), p, asset.USDTMarginedFutures)
+						tickerData, err = by.FetchTicker(context.Background(), p, a)
 						if err != nil {
 							return err
 						}
@@ -525,7 +510,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 							Volume:       compareAndSet(tickerData.Volume, response.Data.Update[x].Volume24h.Float64()),
 							Close:        compareAndSet(tickerData.Close, response.Data.Update[x].PrevPrice24h.Float64()),
 							LastUpdated:  response.Data.Update[x].UpdateAt,
-							AssetType:    asset.USDTMarginedFutures,
+							AssetType:    a,
 							Pair:         p,
 						}
 					}
@@ -534,7 +519,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 				if len(response.Data.Insert) > 0 {
 					for x := range response.Data.Insert {
 						var p currency.Pair
-						p, err = by.extractCurrencyPair(response.Data.Insert[x].Symbol, asset.USDTMarginedFutures)
+						p, err = by.extractCurrencyPair(response.Data.Insert[x].Symbol, a)
 						if err != nil {
 							return err
 						}
@@ -549,7 +534,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 							Volume:       response.Data.Insert[x].Volume24h.Float64(),
 							Close:        response.Data.Insert[x].PrevPrice24h.Float64(),
 							LastUpdated:  response.Data.Insert[x].UpdateAt,
-							AssetType:    asset.USDTMarginedFutures,
+							AssetType:    a,
 							Pair:         p,
 						}
 					}
@@ -585,7 +570,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 
 		for i := range response.Data {
 			var p currency.Pair
-			p, err = by.extractCurrencyPair(response.Data[i].Symbol, asset.USDTMarginedFutures)
+			p, err = by.extractCurrencyPair(response.Data[i].Symbol, a)
 			if err != nil {
 				return err
 			}
@@ -613,12 +598,12 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 			by.Websocket.DataHandler <- &order.Detail{
 				Exchange:  by.Name,
 				OrderID:   response.Data[i].OrderID,
-				AssetType: asset.USDTMarginedFutures,
+				AssetType: a,
 				Pair:      p,
-				Side:      oSide,
-				Status:    oStatus,
 				Price:     response.Data[i].Price.Float64(),
 				Amount:    response.Data[i].OrderQty,
+				Side:      oSide,
+				Status:    oStatus,
 				Trades: []order.TradeHistory{
 					{
 						Price:     response.Data[i].Price.Float64(),
@@ -626,6 +611,8 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 						Exchange:  by.Name,
 						Side:      oSide,
 						Timestamp: response.Data[i].Time,
+						TID:       response.Data[i].ExecutionID,
+						IsMaker:   response.Data[i].IsMaker,
 					},
 				},
 			}
@@ -639,7 +626,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 		}
 		for x := range response.Data {
 			var p currency.Pair
-			p, err = by.extractCurrencyPair(response.Data[x].Symbol, asset.USDTMarginedFutures)
+			p, err = by.extractCurrencyPair(response.Data[x].Symbol, a)
 			if err != nil {
 				return err
 			}
@@ -678,8 +665,8 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 				Type:      oType,
 				Side:      oSide,
 				Status:    oStatus,
-				AssetType: asset.USDTMarginedFutures,
-				Date:      response.Data[x].CreateTime,
+				AssetType: a,
+				Date:      response.Data[x].GetTime(a),
 				Pair:      p,
 				Trades: []order.TradeHistory{
 					{
@@ -687,21 +674,21 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 						Amount:    response.Data[x].OrderQty,
 						Exchange:  by.Name,
 						Side:      oSide,
-						Timestamp: response.Data[x].Time,
+						Timestamp: response.Data[x].GetTime(a),
 					},
 				},
 			}
 		}
 
 	case wsStopOrder:
-		var response WsUSDTFuturesStopOrder
+		var response WsFuturesStopOrder
 		err = json.Unmarshal(respRaw, &response)
 		if err != nil {
 			return err
 		}
 		for x := range response.Data {
 			var p currency.Pair
-			p, err = by.extractCurrencyPair(response.Data[x].Symbol, asset.USDTMarginedFutures)
+			p, err = by.extractCurrencyPair(response.Data[x].Symbol, a)
 			if err != nil {
 				return err
 			}
@@ -741,8 +728,8 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 				Type:      oType,
 				Side:      oSide,
 				Status:    oStatus,
-				AssetType: asset.USDTMarginedFutures,
-				Date:      response.Data[x].CreateTime,
+				AssetType: a,
+				Date:      response.Data[x].GetTime(a),
 				Pair:      p,
 				Trades: []order.TradeHistory{
 					{
@@ -750,7 +737,7 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 						Amount:    response.Data[x].OrderQty,
 						Exchange:  by.Name,
 						Side:      oSide,
-						Timestamp: response.Data[x].CreateTime,
+						Timestamp: response.Data[x].GetTime(a),
 					},
 				},
 			}

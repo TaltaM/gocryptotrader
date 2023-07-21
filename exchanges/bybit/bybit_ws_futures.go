@@ -274,7 +274,7 @@ func (by *Bybit) wsFuturesHandleData(respRaw []byte) error {
 				}
 
 				var p currency.Pair
-				p, err = currency.NewPairFromString(response.OBData[0].Symbol)
+				p, err = currency.NewPairFromString(response.Data[0].Symbol)
 				if err != nil {
 					return err
 				}
@@ -287,7 +287,7 @@ func (by *Bybit) wsFuturesHandleData(respRaw []byte) error {
 				if err != nil {
 					return err
 				}
-				err = by.processOrderbook(response.OBData,
+				err = by.processOrderbook(response.Data,
 					response.Type,
 					p,
 					asset.Futures)
@@ -386,7 +386,7 @@ func (by *Bybit) wsFuturesHandleData(respRaw []byte) error {
 				CurrencyPair: p,
 				AssetType:    asset.Futures,
 				Side:         oSide,
-				Price:        response.TradeData[i].Price,
+				Price:        response.TradeData[i].Price.Float64(),
 				Amount:       response.TradeData[i].Size,
 				Timestamp:    response.TradeData[i].Time,
 			}
@@ -442,7 +442,7 @@ func (by *Bybit) wsFuturesHandleData(respRaw []byte) error {
 					Low:          response.Ticker.LowPrice24h.Float64(),
 					Bid:          response.Ticker.BidPrice.Float64(),
 					Ask:          response.Ticker.AskPrice.Float64(),
-					Volume:       response.Ticker.Volume24h,
+					Volume:       response.Ticker.GetVolume24h(),
 					Close:        response.Ticker.PrevPrice24h.Float64(),
 					LastUpdated:  response.Ticker.UpdateAt,
 					AssetType:    asset.Futures,
@@ -470,7 +470,7 @@ func (by *Bybit) wsFuturesHandleData(respRaw []byte) error {
 							Low:          response.Data.Delete[x].LowPrice24h.Float64(),
 							Bid:          response.Data.Delete[x].BidPrice.Float64(),
 							Ask:          response.Data.Delete[x].AskPrice.Float64(),
-							Volume:       response.Data.Delete[x].Volume24h,
+							Volume:       response.Data.Delete[x].GetVolume24h(),
 							Close:        response.Data.Delete[x].PrevPrice24h.Float64(),
 							LastUpdated:  response.Data.Delete[x].UpdateAt,
 							AssetType:    asset.Futures,
@@ -494,7 +494,7 @@ func (by *Bybit) wsFuturesHandleData(respRaw []byte) error {
 							Low:          response.Data.Update[x].LowPrice24h.Float64(),
 							Bid:          response.Data.Update[x].BidPrice.Float64(),
 							Ask:          response.Data.Update[x].AskPrice.Float64(),
-							Volume:       response.Data.Update[x].Volume24h,
+							Volume:       response.Data.Update[x].GetVolume24h(),
 							Close:        response.Data.Update[x].PrevPrice24h.Float64(),
 							LastUpdated:  response.Data.Update[x].UpdateAt,
 							AssetType:    asset.Futures,
@@ -518,7 +518,7 @@ func (by *Bybit) wsFuturesHandleData(respRaw []byte) error {
 							Low:          response.Data.Insert[x].LowPrice24h.Float64(),
 							Bid:          response.Data.Insert[x].BidPrice.Float64(),
 							Ask:          response.Data.Insert[x].AskPrice.Float64(),
-							Volume:       response.Data.Insert[x].Volume24h,
+							Volume:       response.Data.Insert[x].GetVolume24h(),
 							Close:        response.Data.Insert[x].PrevPrice24h.Float64(),
 							LastUpdated:  response.Data.Insert[x].UpdateAt,
 							AssetType:    asset.Futures,
@@ -651,7 +651,7 @@ func (by *Bybit) wsFuturesHandleData(respRaw []byte) error {
 				Side:      oSide,
 				Status:    oStatus,
 				AssetType: asset.Futures,
-				Date:      response.Data[x].Time,
+				Date:      response.Data[x].GetTime(asset.Futures),
 				Pair:      p,
 				Trades: []order.TradeHistory{
 					{
@@ -659,7 +659,7 @@ func (by *Bybit) wsFuturesHandleData(respRaw []byte) error {
 						Amount:    response.Data[x].OrderQty,
 						Exchange:  by.Name,
 						Side:      oSide,
-						Timestamp: response.Data[x].Time,
+						Timestamp: response.Data[x].GetTime(asset.Futures),
 					},
 				},
 			}
@@ -714,7 +714,7 @@ func (by *Bybit) wsFuturesHandleData(respRaw []byte) error {
 				Side:      oSide,
 				Status:    oStatus,
 				AssetType: asset.Futures,
-				Date:      response.Data[x].Time,
+				Date:      response.Data[x].GetTime(asset.Futures),
 				Pair:      p,
 				Trades: []order.TradeHistory{
 					{
@@ -722,7 +722,7 @@ func (by *Bybit) wsFuturesHandleData(respRaw []byte) error {
 						Amount:    response.Data[x].OrderQty,
 						Exchange:  by.Name,
 						Side:      oSide,
-						Timestamp: response.Data[x].Time,
+						Timestamp: response.Data[x].GetTime(asset.Futures),
 					},
 				},
 			}

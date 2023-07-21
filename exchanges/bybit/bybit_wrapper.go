@@ -321,6 +321,46 @@ func (by *Bybit) Setup(exch *config.Exchange) error {
 	return nil
 }
 
+// WsUSDTConnect connects to a USDT websocket feed
+func (by *Bybit) WsUSDTConnect() error {
+	return by.WsContractConnect(asset.USDTMarginedFutures)
+}
+
+// WsUSDTConnect connects to a USDT websocket feed
+func (by *Bybit) WsCoinConnect() error {
+	return by.WsContractConnect(asset.CoinMarginedFutures)
+}
+
+// SubscribeUSDT sends a websocket message to receive data from the channel
+func (by *Bybit) SubscribeUSDT(channelsToSubscribe []stream.ChannelSubscription) error {
+	return by.SubscribeWsContract(channelsToSubscribe, asset.USDTMarginedFutures)
+}
+
+// SubscribeCoin sends a websocket message to receive data from the channel
+func (by *Bybit) SubscribeCoin(channelsToSubscribe []stream.ChannelSubscription) error {
+	return by.SubscribeWsContract(channelsToSubscribe, asset.CoinMarginedFutures)
+}
+
+// UnsubscribeUSDT sends a websocket message to stop receiving data from the channel
+func (by *Bybit) UnsubscribeUSDT(channelsToUnsubscribe []stream.ChannelSubscription) error {
+	return by.UnsubscribeWsContract(channelsToUnsubscribe, asset.USDTMarginedFutures)
+}
+
+// UnsubscribeCoin sends a websocket message to stop receiving data from the channel
+func (by *Bybit) UnsubscribeCoin(channelsToUnsubscribe []stream.ChannelSubscription) error {
+	return by.UnsubscribeWsContract(channelsToUnsubscribe, asset.CoinMarginedFutures)
+}
+
+// GenerateUSDTMarginedFuturesDefaultSubscriptions returns channel subscriptions for futures instruments
+func (by *Bybit) GenerateUSDTMarginedFuturesDefaultSubscriptions() ([]stream.ChannelSubscription, error) {
+	return by.GenerateWsContractDefaultSubscriptions(asset.USDTMarginedFutures)
+}
+
+// GenerateCoinMarginedFuturesDefaultSubscriptions returns channel subscriptions for futures instruments
+func (by *Bybit) GenerateCoinMarginedFuturesDefaultSubscriptions() ([]stream.ChannelSubscription, error) {
+	return by.GenerateWsContractDefaultSubscriptions(asset.CoinMarginedFutures)
+}
+
 // AuthenticateWebsocket sends an authentication message to the websocket
 func (by *Bybit) AuthenticateWebsocket(ctx context.Context) error {
 	return by.WsAuth(ctx)
