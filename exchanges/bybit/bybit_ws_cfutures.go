@@ -130,6 +130,7 @@ func (by *Bybit) wsContractReadData(wsConn stream.Connection, a asset.Item) {
 	assetWebsocket, err := by.Websocket.GetAssetWebsocket(a)
 	if err != nil {
 		log.Errorf(log.ExchangeSys, "%v asset type: %v", err, a)
+		return
 	}
 	assetWebsocket.Wg.Add(1)
 	defer assetWebsocket.Wg.Done()
@@ -899,4 +900,11 @@ func (by *Bybit) GetActionFromString(s string) (orderbook.Action, error) {
 		return orderbook.Insert, nil
 	}
 	return 0, fmt.Errorf("%s %w", s, orderbook.ErrInvalidAction)
+}
+
+func compareAndSet(prevVal, newVal float64) float64 {
+	if newVal != 0 {
+		return newVal
+	}
+	return prevVal
 }
