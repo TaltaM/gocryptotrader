@@ -140,5 +140,5 @@ func (t *WsFuturesTickerData) GetVolume24h() float64 {
 	if t.Volume24h.Float64() != 0 {
 		return t.Volume24h.Float64()
 	}
-	return t.Volume24hE8.Float64()
+	return t.Volume24hE8.Float64() / 100000000.0
 }
