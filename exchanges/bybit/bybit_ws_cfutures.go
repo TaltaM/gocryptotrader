@@ -68,7 +68,6 @@ var defaultSubscriptionChannels = map[asset.Item][]string{
 		wsOrder200,
 		wsTrade,
 		wsUSDTKline,
-		wsLiquidation,
 	},
 	asset.CoinMarginedFutures: {
 		wsInstrument,
@@ -76,6 +75,19 @@ var defaultSubscriptionChannels = map[asset.Item][]string{
 		wsTrade,
 		wsKlineV2,
 		wsLiquidation,
+	},
+}
+
+var defaultAuthSubscriptionChannels = map[asset.Item][]string{
+	asset.USDTMarginedFutures: {
+		wsWallet,
+		wsOrder,
+		wsStopOrder,
+	},
+	asset.CoinMarginedFutures: {
+		wsWallet,
+		wsOrder,
+		wsStopOrder,
 	},
 }
 
@@ -107,7 +119,8 @@ func (by *Bybit) WsContractConnect(a asset.Item) error {
 		log.Debugf(log.ExchangeSys, "%s Connected to %v Websocket.\n", by.Name, a)
 	}
 
-	go by.wsContractReadData(assetWebsocket.Conn, a)
+	ctx, cancel := context.WithCancel(context.Background())
+	go by.wsContractReadData(ctx, assetWebsocket.Conn, a, assetWebsocket, cancel)
 	by.Websocket.SetCanUseAuthenticatedEndpoints(true, a)
 	if by.Websocket.CanUseAuthenticatedEndpoints() {
 		var dialer websocket.Dialer
@@ -115,32 +128,55 @@ func (by *Bybit) WsContractConnect(a asset.Item) error {
 		if err != nil {
 			return err
 		}
-		go by.wsContractReadData(assetWebsocket.AuthConn, a)
+		go by.wsContractReadData(ctx, assetWebsocket.AuthConn, a, assetWebsocket, cancel)
 		err = by.WsContractAuth(context.TODO(), a)
 		if err != nil {
 			by.Websocket.DataHandler <- err
 			by.Websocket.SetCanUseAuthenticatedEndpoints(false, a)
+			return nil
+		}
+		/*
+			assetWebsocket.AuthConn.SetupPingHandler(stream.PingHandler{
+				Message:     pingMsg,
+				MessageType: websocket.PingMessage,
+				Delay:       bybitWebsocketTimer,
+			})
+		*/
+		var authSubs []stream.ChannelSubscription
+		authSubs, err = by.GenerateWsContractDefaultAuthSubscriptions(a)
+		if err != nil {
+			return err
+		}
+		err = by.SubscribeWsContract(authSubs, a)
+		if err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
 // wsContractReadData gets and passes on websocket messages for processing
-func (by *Bybit) wsContractReadData(wsConn stream.Connection, a asset.Item) {
-	assetWebsocket, err := by.Websocket.GetAssetWebsocket(a)
-	if err != nil {
-		log.Errorf(log.ExchangeSys, "%v asset type: %v", err, a)
-		return
-	}
+func (by *Bybit) wsContractReadData(ctx context.Context, wsConn stream.Connection, a asset.Item, assetWebsocket *stream.Websocket, cancelFunc context.CancelFunc) {
+	log.Errorf(log.ExchangeSys, "wsContractReadData enters - %v", wsConn.GetID())
 	assetWebsocket.Wg.Add(1)
-	defer assetWebsocket.Wg.Done()
+	defer func() {
+		log.Errorf(log.ExchangeSys, "wsContractReadData exits - %v", wsConn.GetID())
+		assetWebsocket.Wg.Done()
+	}()
 	for {
 		select {
+		case <-ctx.Done():
+			// received a termination signal
+			log.Errorf(log.ExchangeSys, "wsContractReadData received termination signal - %v", wsConn.GetID())
+			return
 		case <-assetWebsocket.ShutdownC:
+			log.Errorf(log.ExchangeSys, "wsContractReadData received ShutdownC - %v", wsConn.GetID())
 			return
 		default:
 			resp := wsConn.ReadMessage()
 			if resp.Raw == nil {
+				log.Errorf(log.ExchangeSys, "wsContractReadData resp.Raw == nil - %v", wsConn.GetID())
+				cancelFunc()
 				return
 			}
 
@@ -184,12 +220,6 @@ func (by *Bybit) WsContractAuth(ctx context.Context, a asset.Item) error {
 // GenerateWsContractDefaultSubscriptions returns channel subscriptions for futures instruments
 func (by *Bybit) GenerateWsContractDefaultSubscriptions(a asset.Item) ([]stream.ChannelSubscription, error) {
 	channels := defaultSubscriptionChannels[a]
-	if by.Websocket.CanUseAuthenticatedEndpoints() {
-		channels = append(channels,
-			wsWallet,
-			wsOrder,
-			wsStopOrder)
-	}
 	subscriptions := []stream.ChannelSubscription{}
 	contractPairs, err := by.GetEnabledPairs(a)
 	if err != nil {
@@ -243,8 +273,29 @@ func (by *Bybit) GenerateWsContractDefaultSubscriptions(a asset.Item) ([]stream.
 	return subscriptions, nil
 }
 
+// GenerateWsContractDefaultSubscriptions returns channel subscriptions for futures instruments
+func (by *Bybit) GenerateWsContractDefaultAuthSubscriptions(a asset.Item) ([]stream.ChannelSubscription, error) {
+	if !by.Websocket.CanUseAuthenticatedEndpoints() {
+		return nil, nil
+	}
+	channels := defaultAuthSubscriptionChannels[a]
+	subscriptions := []stream.ChannelSubscription{}
+	for x := range channels {
+		switch channels[x] {
+		case wsInsurance, wsLiquidation, wsPosition,
+			wsExecution, wsOrder, wsStopOrder, wsWallet:
+			subscriptions = append(subscriptions, stream.ChannelSubscription{
+				Asset:   a,
+				Channel: channels[x],
+			})
+		}
+	}
+	return subscriptions, nil
+}
+
 // SubscribeWsContract sends a websocket message to receive data from the channel
 func (by *Bybit) SubscribeWsContract(channelsToSubscribe []stream.ChannelSubscription, a asset.Item) error {
+	time.Sleep(2 * time.Second)
 	assetWebsocket, err := by.Websocket.GetAssetWebsocket(a)
 	if err != nil {
 		return fmt.Errorf("%w asset type: %v", err, a)
@@ -267,7 +318,12 @@ func (by *Bybit) SubscribeWsContract(channelsToSubscribe []stream.ChannelSubscri
 		}
 		sub.Args = append(sub.Args, argStr)
 
-		err = assetWebsocket.Conn.SendJSONMessage(sub)
+		switch channelsToSubscribe[i].Channel {
+		case wsPosition, wsExecution, wsOrder, wsStopOrder, wsWallet:
+			err = assetWebsocket.AuthConn.SendJSONMessage(sub)
+		default:
+			err = assetWebsocket.Conn.SendJSONMessage(sub)
+		}
 		if err != nil {
 			errs = common.AppendError(errs, err)
 			continue
@@ -320,13 +376,16 @@ func (by *Bybit) wsContractHandleResp(wsFuturesResp *WsFuturesResp, a asset.Item
 			if err != nil {
 				return fmt.Errorf("%w asset type: %v", err, a)
 			}
-			switch wsFuturesResp.RetMsg {
-			case "error:request expired":
-				log.Errorf(log.ExchangeSys, "%s Asset Type %v Authentication request expired: %v", by.Name, a, wsFuturesResp.RetMsg)
-			default:
-				log.Errorf(log.ExchangeSys, "%s Asset Type %v Authentication failed with message: %v - disabling authenticated endpoing", by.Name, a, wsFuturesResp.RetMsg)
-				assetWebsocket.SetCanUseAuthenticatedEndpoints(false)
-			}
+			/*
+				switch wsFuturesResp.RetMsg {
+				case "error:request expired":
+					log.Errorf(log.ExchangeSys, "%s Asset Type %v Authentication request expired: %v", by.Name, a, wsFuturesResp.RetMsg)
+				default:
+					log.Errorf(log.ExchangeSys, "%s Asset Type %v Authentication failed with message: %v - disabling authenticated endpoing", by.Name, a, wsFuturesResp.RetMsg)
+					assetWebsocket.SetCanUseAuthenticatedEndpoints(false)
+				}
+			*/
+			assetWebsocket.SetCanUseAuthenticatedEndpoints(false)
 			return nil
 		}
 		if by.Verbose {

@@ -325,3 +325,8 @@ func (w *WebsocketConnection) SetProxy(proxy string) {
 func (w *WebsocketConnection) GetURL() string {
 	return w.URL
 }
+
+// GetID returns the connection ID
+func (w *WebsocketConnection) GetID() string {
+	return w.WsConnID
+}

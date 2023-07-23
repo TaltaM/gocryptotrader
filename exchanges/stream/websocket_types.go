@@ -93,6 +93,9 @@ type Websocket struct {
 	Conn Connection
 	// Authenticated stream connection
 	AuthConn Connection
+
+	WsID          string
+	WsConnCounter int
 }
 
 // WebsocketSetup defines variables for setting up a websocket connection
@@ -146,4 +149,6 @@ type WebsocketConnection struct {
 	readMessageErrors chan error
 
 	Reporter Reporter
+
+	WsConnID string
 }

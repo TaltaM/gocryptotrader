@@ -90,6 +90,14 @@ func (w *Websocket) SetupNewConnection(c ConnectionSetup) error {
 		c.ConnectionLevelReporter = globalReporter
 	}
 
+	wsConnID := fmt.Sprintf("%v-%v", w.WsID, w.WsConnCounter)
+	w.WsConnCounter++
+	if c.Authenticated {
+		wsConnID += "-auth"
+	} else {
+		wsConnID += "-noAuth"
+	}
+
 	newConn := &WebsocketConnection{
 		ExchangeName:      w.exchangeName,
 		URL:               connectionURL,
@@ -103,6 +111,7 @@ func (w *Websocket) SetupNewConnection(c ConnectionSetup) error {
 		Match:             w.Match,
 		RateLimit:         c.RateLimit,
 		Reporter:          c.ConnectionLevelReporter,
+		WsConnID:          wsConnID,
 	}
 
 	if c.Authenticated {
@@ -234,7 +243,7 @@ func (w *Websocket) connectionMonitor() error {
 					w.setInit(false)
 					log.Warnf(log.WebsocketMgr,
 						"%v websocket has been disconnected. Reason: %v",
-						w.exchangeName, err)
+						w.WsID, err)
 					w.setConnectedStatus(false)
 				} else {
 					// pass off non disconnect errors to datahandler to manage

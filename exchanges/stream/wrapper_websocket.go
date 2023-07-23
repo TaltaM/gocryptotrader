@@ -577,7 +577,11 @@ func (w *WrapperWebsocket) AddWebsocket(s *WebsocketSetup) (*Websocket, error) {
 		ShutdownC:      make(chan struct{}),
 		AssetShutdownC: w.ShutdownC,
 		AssetType:      s.AssetType,
+
+		WsID: fmt.Sprintf("%v-%v-%v", w.exchangeName, s.AssetType.String(), w.WebsocketCounter),
 	}
+	w.WebsocketCounter++
+
 	err := assetWebsocket.SetWebsocketURL(s.RunningURL, false, false)
 	if err != nil {
 		return nil, fmt.Errorf("%s %w", w.exchangeName, err)

@@ -96,6 +96,8 @@ type WrapperWebsocket struct {
 
 	// AssetTypeWebsockets defines a map of asset type item to corresponding websocket class
 	AssetTypeWebsockets map[asset.Item]*Websocket
+
+	WebsocketCounter int
 }
 
 // NewWrapper creates a new websocket wrapper instance

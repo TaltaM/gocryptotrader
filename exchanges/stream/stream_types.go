@@ -22,6 +22,7 @@ type Connection interface {
 	SetURL(string)
 	SetProxy(string)
 	GetURL() string
+	GetID() string
 	Shutdown() error
 }
 
