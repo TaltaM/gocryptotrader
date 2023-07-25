@@ -10,6 +10,54 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 )
 
+type bybitTime time.Time
+
+// UnmarshalJSON deserializes timestamp information to time.Time
+func (o *bybitTime) UnmarshalJSON(data []byte) error {
+	var timeMilliSecond interface{}
+	err := json.Unmarshal(data, &timeMilliSecond)
+	if err != nil {
+		return err
+	}
+	var timestamp int64
+	switch value := timeMilliSecond.(type) {
+	case string:
+		if value == "" {
+			*o = bybitTime(time.Time{}) // in case timestamp information is empty string("") reset bybitTime to zero.
+			return nil
+		}
+		timestamp, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return err
+		}
+	case int64:
+		timestamp = value
+	case float64:
+		timestamp = int64(value)
+	case float32:
+		timestamp = int64(value)
+	default:
+		return fmt.Errorf("cannot unmarshal %T into bybitTime", value)
+	}
+
+	switch {
+	case timestamp == 0:
+		*o = bybitTime(time.Time{})
+	case timestamp >= 1e18: // Nanoseconds
+		*o = bybitTime(time.Unix(timestamp/1e9, timestamp%1e9))
+	case timestamp >= 1e10: // Milliseconds
+		*o = bybitTime(time.Unix(timestamp/1e3, 0))
+	default: // Seconds
+		*o = bybitTime(time.Unix(timestamp, 0))
+	}
+	return nil
+}
+
+// Time returns a time.Time instance from bybitMilliSec instance
+func (o *bybitTime) Time() time.Time {
+	return time.Time(*o)
+}
+
 type bybitNumber float64
 
 // Float64 returns an float64 value from kucoinNumeric instance
@@ -50,40 +98,6 @@ func (a *bybitNumber) UnmarshalJSON(data []byte) error {
 		*a = bybitNumber(val)
 	default:
 		return fmt.Errorf("unsupported input numeric type %T", value)
-	}
-	return nil
-}
-
-type bybitInt64 int64
-
-func (a *bybitInt64) Int64() int64 {
-	return int64(*a)
-}
-
-// UnmarshalJSON deserializes integer and string data having an integer value to int64
-func (a *bybitInt64) UnmarshalJSON(data []byte) error {
-	var value interface{}
-	err := json.Unmarshal(data, &value)
-	if err != nil {
-		return err
-	}
-	switch val := value.(type) {
-	case string:
-		if val == "" {
-			*a = bybitInt64(0) // setting empty string value to zero to reset previous value if exist.
-			return nil
-		}
-		value, err := strconv.ParseInt(val, 10, 64)
-		if err != nil {
-			return err
-		}
-		*a = bybitInt64(value)
-	case float64:
-		*a = bybitInt64(val)
-	case float32:
-		*a = bybitInt64(val)
-	default:
-		return fmt.Errorf("unmarshalling unsupported input numeric type %T (%v)", value, string(data))
 	}
 	return nil
 }

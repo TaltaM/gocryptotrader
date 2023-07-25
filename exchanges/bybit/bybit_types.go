@@ -1,12 +1,10 @@
 package bybit
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
-	"strconv"
 	"time"
 
+	"github.com/thrasher-corp/gocryptotrader/common/convert"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/orderbook"
 )
 
@@ -45,57 +43,6 @@ var (
 )
 
 var validCategory = []string{"spot", "linear", "inverse", "option"}
-
-// bybitTime provides an internal conversion helper
-type bybitTime time.Time
-
-// UnmarshalJSON is custom type json unmarshaller for bybitTime
-func (b *bybitTime) UnmarshalJSON(data []byte) error {
-	var timestamp interface{}
-	err := json.Unmarshal(data, &timestamp)
-	if err != nil {
-		return err
-	}
-	var standard int64
-	switch value := timestamp.(type) {
-	case string:
-		if value == "" {
-			*b = bybitTime(time.Time{})
-			return nil
-		}
-		floatValue, err := strconv.ParseFloat(value, 64)
-		if err != nil {
-			return err
-		}
-		standard = int64(floatValue)
-	case int64:
-		standard = value
-	case int32:
-		standard = int64(value)
-	case float64:
-		standard = int64(value)
-	case nil:
-		// for some cases when bybitTime sends a nil value as a zero value timestamp information.
-	default:
-		return fmt.Errorf("unsupported timestamp information type %T", timestamp)
-	}
-	switch {
-	case standard == 0:
-		*b = bybitTime(time.Time{})
-	case standard >= 1e13:
-		*b = bybitTime(time.Unix((standard / 1e9), standard%1e9))
-	case standard >= 1e10:
-		*b = bybitTime(time.UnixMilli(standard))
-	default:
-		*b = bybitTime(time.Unix(standard, 0))
-	}
-	return nil
-}
-
-// Time returns a time.Time object
-func (b bybitTime) Time() time.Time {
-	return time.Time(b)
-}
 
 // UnmarshalTo acts as interface to exchange API response
 type UnmarshalTo interface {
@@ -575,7 +522,7 @@ type WsFuturesKlineData struct {
 	Volume    bybitNumber `json:"volume"`
 	TurnOver  bybitNumber `json:"turnover"`
 	Confirm   bool        `json:"confirm"`
-	CrossSeq  int64       `json:"coss_seq"`
+	CrossSeq  float64     `json:"cross_seq"`
 	Timestamp bybitTime   `json:"timestamp"`
 }
 
@@ -600,38 +547,42 @@ type WsInsurance struct {
 
 // WsTickerData stores ws ticker data
 type WsTickerData struct {
-	ID                    int64       `json:"id"`
-	Symbol                string      `json:"symbol"`
-	LastPrice             bybitNumber `json:"last_price"`
-	BidPrice              bybitNumber `json:"bid1_price"`
-	AskPrice              bybitNumber `json:"ask1_price"`
-	LastDirection         string      `json:"last_tick_direction"`
-	PrevPrice24h          bybitNumber `json:"prev_price_24h"`
-	Price24hPercentChange bybitInt64  `json:"price_24h_pcnt_e6"`
-	Price1hPercentChange  bybitInt64  `json:"price_1h_pcnt_e6"`
-	HighPrice24h          bybitNumber `json:"high_price_24h"`
-	LowPrice24h           bybitNumber `json:"low_price_24h"`
-	PrevPrice1h           bybitNumber `json:"prev_price_1h"`
-	MarkPrice             bybitNumber `json:"mark_price"`
-	IndexPrice            bybitNumber `json:"index_price"`
-	OpenInterest          bybitNumber `json:"open_interest"`
-	OpenValue             bybitNumber `json:"open_value_e8"`
-	TotalTurnOver         bybitNumber `json:"total_turnover_e8"`
-	TurnOver24h           bybitNumber `json:"turnover_24h_e8"`
-	TotalVolume           bybitNumber `json:"total_volume"`
-	Volume24h             bybitNumber `json:"volume_24h"`
-	FundingRate           bybitNumber `json:"funding_rate_e6"`
-	PredictedFundingRate  bybitNumber `json:"predicted_funding_rate_e6"`
-	CreatedAt             time.Time   `json:"created_at"`
-	UpdateAt              time.Time   `json:"updated_at"`
-	NextFundingAt         time.Time   `json:"next_funding_time"`
-	CountDownHour         int64       `json:"countdown_hour"`
+	ID                    int64                   `json:"id"`
+	Symbol                string                  `json:"symbol"`
+	LastPrice             convert.StringToFloat64 `json:"last_price"`
+	BidPrice              convert.StringToFloat64 `json:"bid1_price"`
+	AskPrice              convert.StringToFloat64 `json:"ask1_price"`
+	LastDirection         string                  `json:"last_tick_direction"`
+	PrevPrice24h          convert.StringToFloat64 `json:"prev_price_24h"`
+	Price24hPercentChange float64                 `json:"price_24h_pcnt_e6"`
+	Price1hPercentChange  float64                 `json:"price_1h_pcnt_e6"`
+	HighPrice24h          convert.StringToFloat64 `json:"high_price_24h"`
+	LowPrice24h           convert.StringToFloat64 `json:"low_price_24h"`
+	PrevPrice1h           convert.StringToFloat64 `json:"prev_price_1h"`
+	MarkPrice             convert.StringToFloat64 `json:"mark_price"`
+	IndexPrice            convert.StringToFloat64 `json:"index_price"`
+	OpenInterest          float64                 `json:"open_interest"`
+	OpenValue             float64                 `json:"open_value_e8"`
+	TotalTurnOver         float64                 `json:"total_turnover_e8"`
+	TurnOver24h           float64                 `json:"turnover_24h_e8"`
+	TotalVolume           float64                 `json:"total_volume"`
+	Volume24h             float64                 `json:"volume_24h"`
+	FundingRate           float64                 `json:"funding_rate_e6"`
+	PredictedFundingRate  float64                 `json:"predicted_funding_rate_e6"`
+	CrossSeq              float64                 `json:"cross_seq"`
+	CreatedAt             time.Time               `json:"created_at"`
+	UpdateAt              time.Time               `json:"updated_at"`
+	NextFundingAt         time.Time               `json:"next_funding_time"`
+	CountDownHour         float64                 `json:"countdown_hour"`
+	FundingRateInterval   float64                 `json:"funding_rate_interval"`
 }
 
 // WsTicker stores ws ticker
 type WsTicker struct {
-	Topic  string       `json:"topic"`
-	Ticker WsTickerData `json:"data"`
+	Topic     string       `json:"topic"`
+	Ticker    WsTickerData `json:"data"`
+	CrossSeq  float64      `json:"cross_seq"`
+	Timestamp bybitTime    `json:"timestamp_e6"`
 }
 
 // WsDeltaTicker stores ws ticker
@@ -647,8 +598,8 @@ type WsDeltaTicker struct {
 
 // WsFuturesTickerData stores ws future ticker data
 type WsFuturesTickerData struct {
-	ID                    int64       `json:"id"`
-	Symbol                string      `json:"symbol"`
+	ID                    int64       `json:"id"`     // Futures
+	Symbol                string      `json:"symbol"` // Futures
 	SymbolName            string      `json:"symbol_name"`
 	SymbolYear            int64       `json:"symbol_year"`
 	ContractType          string      `json:"contract_type"`
@@ -658,17 +609,17 @@ type WsFuturesTickerData struct {
 	IsUpBorrowable        int64       `json:"is_up_borrowable"`
 	ImportTime            bybitTime   `json:"import_time_e9"`
 	StartTradingTime      bybitTime   `json:"start_trading_time_e9"`
-	TimeToSettle          bybitTime   `json:"settle_time_e9"`
-	SettleFeeRate         int64       `json:"settle_fee_rate_e8"`
+	TimeToSettle          bybitTime   `json:"settle_time_e9"` // Futures
+	SettleFeeRate         bybitNumber `json:"settle_fee_rate_e8"`
 	ContractStatus        string      `json:"contract_status"`
-	SystemSubsidy         int64       `json:"system_subsidy_e8"`
+	SystemSubsidy         bybitNumber `json:"system_subsidy_e8"`
 	LastPrice             bybitNumber `json:"last_price"`
 	BidPrice              bybitNumber `json:"bid1_price"`
 	AskPrice              bybitNumber `json:"ask1_price"`
 	LastDirection         string      `json:"last_tick_direction"`
 	PrevPrice24h          bybitNumber `json:"prev_price_24h"`
-	Price24hPercentChange bybitInt64  `json:"price_24h_pcnt_e6"`
-	Price1hPercentChange  bybitInt64  `json:"price_1h_pcnt_e6"`
+	Price24hPercentChange bybitNumber `json:"price_24h_pcnt_e6"`
+	Price1hPercentChange  bybitNumber `json:"price_1h_pcnt_e6"`
 	HighPrice24h          bybitNumber `json:"high_price_24h"`
 	LowPrice24h           bybitNumber `json:"low_price_24h"`
 	PrevPrice1h           bybitNumber `json:"prev_price_1h"`
@@ -681,18 +632,28 @@ type WsFuturesTickerData struct {
 	TotalVolume           bybitNumber `json:"total_volume"`
 	Volume24h             bybitNumber `json:"volume_24h"`
 	Volume24hE8           bybitNumber `json:"volume_24h_e8"`
+	FundingRate           bybitNumber `json:"funding_rate_e6"`
+	PredictedFundingRate  bybitNumber `json:"predicted_funding_rate_e6"`
 	FairBasis             bybitNumber `json:"fair_basis_e8"`
 	FairBasisRate         bybitNumber `json:"fair_basis_rate_e8"`
 	BasisInYear           bybitNumber `json:"basis_in_year_e8"`
 	ExpectPrice           bybitNumber `json:"expect_price"`
+	CrossSeq              bybitNumber `json:"cross_seq"`
 	CreatedAt             time.Time   `json:"created_at"`
 	UpdateAt              time.Time   `json:"updated_at"`
+	NextFundingTime       time.Time   `json:"next_funding_time"`
+	CountDownHour         bybitNumber `json:"countdown_hour"`
+	FundingRateInterval   bybitNumber `json:"funding_rate_interval"`
+	DelistingStatus       string      `json:"delisting_status"`
 }
 
 // WsFuturesTicker stores ws future ticker
 type WsFuturesTicker struct {
-	Topic  string              `json:"topic"`
-	Ticker WsFuturesTickerData `json:"data"`
+	Topic     string              `json:"topic"`
+	Type      string              `json:"type"`
+	Ticker    WsFuturesTickerData `json:"data"`
+	CrossSeq  float64             `json:"cross_seq"`
+	Timestamp bybitTime           `json:"timestamp_e6"`
 }
 
 // WsDeltaFuturesTicker stores ws delta future ticker
