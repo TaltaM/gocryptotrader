@@ -43,7 +43,7 @@ var defaultUSDTMarginedFuturesAuthSubscriptionChannels = []string{
 	wsStopOrder,
 }
 
-// WsUSDTConnect connects to asset.USDTMarginedFutures CMF websocket feed
+// WsUSDTConnect connects to USDTMarginedFutures CMF websocket feed
 func (by *Bybit) WsUSDTConnect() error {
 	if !by.Websocket.IsEnabled() || !by.IsEnabled() || !by.IsAssetWebsocketSupported(asset.USDTMarginedFutures) {
 		return errors.New(stream.WebsocketNotEnabled)
@@ -105,7 +105,7 @@ func (by *Bybit) wsUSDTReadData(ctx context.Context, cancelFunc context.CancelFu
 	for {
 		select {
 		case <-ctx.Done():
-			// received asset.USDTMarginedFutures termination signal
+			// received termination signal
 			return
 		case <-assetWebsocket.ShutdownC:
 			return
@@ -229,7 +229,7 @@ func (by *Bybit) GenerateWsUSDTDefaultAuthSubscriptions() ([]stream.ChannelSubsc
 	return subscriptions, nil
 }
 
-// SubscribeUSDT sends asset.USDTMarginedFutures websocket message to receive data from the channel
+// SubscribeUSDT sends a websocket message to receive data from the channel
 func (by *Bybit) SubscribeUSDT(channelsToSubscribe []stream.ChannelSubscription) error {
 	assetWebsocket, err := by.Websocket.GetAssetWebsocket(asset.USDTMarginedFutures)
 	if err != nil {
@@ -533,14 +533,6 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 			}
 		}
 
-	case wsInsurance:
-		var response WsInsurance
-		err = json.Unmarshal(respRaw, &response)
-		if err != nil {
-			return err
-		}
-		by.Websocket.DataHandler <- response.Data
-
 	case wsInstrument:
 		if wsType, ok := multiStreamData["type"].(string); ok {
 			switch wsType {
@@ -615,6 +607,14 @@ func (by *Bybit) wsUSDTHandleData(respRaw []byte) error {
 
 	case wsLiquidation:
 		var response WsFuturesLiquidation
+		err = json.Unmarshal(respRaw, &response)
+		if err != nil {
+			return err
+		}
+		by.Websocket.DataHandler <- response.Data
+
+	case wsInsurance:
+		var response WsInsurance
 		err = json.Unmarshal(respRaw, &response)
 		if err != nil {
 			return err

@@ -71,7 +71,7 @@ var defaultCoinMarginedFuturesAuthSubscriptionChannels = []string{
 	wsStopOrder,
 }
 
-// WsCoinConnect connects to asset.CoinMarginedFutures CMF websocket feed
+// WsCoinConnect connects to CoinMarginedFutures CMF websocket feed
 func (by *Bybit) WsCoinConnect() error {
 	if !by.Websocket.IsEnabled() || !by.IsEnabled() || !by.IsAssetWebsocketSupported(asset.CoinMarginedFutures) {
 		return errors.New(stream.WebsocketNotEnabled)
@@ -133,7 +133,7 @@ func (by *Bybit) wsCoinReadData(ctx context.Context, cancelFunc context.CancelFu
 	for {
 		select {
 		case <-ctx.Done():
-			// received asset.CoinMarginedFutures termination signal
+			// received termination signal
 			return
 		case <-assetWebsocket.ShutdownC:
 			return
@@ -257,7 +257,7 @@ func (by *Bybit) GenerateWsCoinDefaultAuthSubscriptions() ([]stream.ChannelSubsc
 	return subscriptions, nil
 }
 
-// SubscribeCoin sends asset.CoinMarginedFutures websocket message to receive data from the channel
+// SubscribeCoin sends a websocket message to receive data from the channel
 func (by *Bybit) SubscribeCoin(channelsToSubscribe []stream.ChannelSubscription) error {
 	assetWebsocket, err := by.Websocket.GetAssetWebsocket(asset.CoinMarginedFutures)
 	if err != nil {
@@ -561,14 +561,6 @@ func (by *Bybit) wsCoinHandleData(respRaw []byte) error {
 			}
 		}
 
-	case wsInsurance:
-		var response WsInsurance
-		err = json.Unmarshal(respRaw, &response)
-		if err != nil {
-			return err
-		}
-		by.Websocket.DataHandler <- response.Data
-
 	case wsInstrument:
 		if wsType, ok := multiStreamData["type"].(string); ok {
 			switch wsType {
@@ -643,6 +635,14 @@ func (by *Bybit) wsCoinHandleData(respRaw []byte) error {
 
 	case wsLiquidation:
 		var response WsFuturesLiquidation
+		err = json.Unmarshal(respRaw, &response)
+		if err != nil {
+			return err
+		}
+		by.Websocket.DataHandler <- response.Data
+
+	case wsInsurance:
+		var response WsInsurance
 		err = json.Unmarshal(respRaw, &response)
 		if err != nil {
 			return err

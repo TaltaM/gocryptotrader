@@ -522,7 +522,7 @@ type WsFuturesKlineData struct {
 	Volume    bybitNumber `json:"volume"`
 	TurnOver  bybitNumber `json:"turnover"`
 	Confirm   bool        `json:"confirm"`
-	CrossSeq  float64     `json:"cross_seq"`
+	CrossSeq  bybitNumber `json:"cross_seq"`
 	Timestamp bybitTime   `json:"timestamp"`
 }
 
@@ -652,7 +652,7 @@ type WsFuturesTicker struct {
 	Topic     string              `json:"topic"`
 	Type      string              `json:"type"`
 	Ticker    WsFuturesTickerData `json:"data"`
-	CrossSeq  float64             `json:"cross_seq"`
+	CrossSeq  bybitNumber         `json:"cross_seq"`
 	Timestamp bybitTime           `json:"timestamp_e6"`
 }
 
@@ -665,8 +665,8 @@ type WsDeltaFuturesTicker struct {
 		Update []WsFuturesTickerData `json:"update"`
 		Insert []WsFuturesTickerData `json:"insert"`
 	} `json:"data"`
-	CrossSeq  int64     `json:"coss_seq"`
-	Timestamp bybitTime `json:"timestamp_e6"`
+	CrossSeq  bybitNumber `json:"coss_seq"`
+	Timestamp bybitTime   `json:"timestamp_e6"`
 }
 
 // WsLiquidationData stores ws liquidation data
